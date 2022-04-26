@@ -1,0 +1,45 @@
+# EditorConfig is awesome: http://EditorConfig.org
+# EditorConfig helps developers define and maintain consistent
+# coding styles between different editors and IDEs
+
+# top-most EditorConfig file
+root = true
+
+# Unix-style newlines with a newline ending every file
+[*]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+# Docs!
+[*.md]
+max_line_length = 0
+trim_trailing_whitespace = false
+
+# YAML files
+[*.{yml,yaml}]
+indent_size = 2
+
+# SH
+[*.sh]
+indent_size = 2
+
+# Terraform
+[*.{tf,tfvars,conf}]
+indent_size = 2
+
+# JS
+[*.{js,json}]
+indent_size = 2
+
+# Makefile
+[Makefile]
+tab_width = 2
+indent_style = tab
+
+# Commit
+[COMMIT_EDITMSG]
+max_line_length = 0
