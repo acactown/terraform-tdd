@@ -257,3 +257,7 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/vim,osx,macos,windows,osx,linux,intellij+all,visualstudiocode,terraform
+
+# Terraform plan files
+plan.out
+plan.out.json

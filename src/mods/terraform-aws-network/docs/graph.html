@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="description" content="Terraform configuration graph">
+    <meta name="author" content="https://github.com/pcasteran/terraform-graph-beautifier">
+
+    <title>tmp</title>
+
+    <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/layout-base/layout-base.js"></script>
+    <script src="https://unpkg.com/cose-base/cose-base.js"></script>
+    <script src="https://unpkg.com/cytoscape-fcose/cytoscape-fcose.js"></script>
+    <script src="https://unpkg.com/cytoscape-expand-collapse/cytoscape-expand-collapse.js"></script>
+
+</head>
+<style>
+    #cy {
+        width: 100%;
+        height: 95%;
+        position: absolute;
+        top: 40px;
+        left: 0px;
+    }
+</style>
+<body>
+<p>
+    <b id="collapseAll" style="cursor: pointer;color: darkred">Collapse all</b>
+    /
+    <b id="expandAll" style="cursor: pointer; color: darkslateblue">Expand all</b>
+    -
+    <b id="runLayout" style="cursor: pointer; color: #598b3d">Run layout</b>
+</p>
+<div id="cy"></div>
+<script>
+    // Helper function used to retrieve the scratchpad data of an element.
+    const getScratchPad = function (element) {
+        let scratchPad = element.scratch('_tf-graph-beautifier');
+        if (!scratchPad) {
+            scratchPad = element.scratch('_tf-graph-beautifier', {});
+        }
+        return scratchPad;
+    }
+
+    // Color palette used for the modules background.
+    //
+    // This is the "8-class Pastel2" palette from ColorBrewer v2.0 (https://colorbrewer2.org/?type=qualitative&scheme=Pastel2&n=8).
+    //
+    // This palette is covered by a licence, hence here is the related acknowledgments:
+    // This product includes color specifications and designs developed by Cynthia Brewer (http://colorbrewer.org/).
+    // Please see license at http://colorbrewer.org/export/LICENSE.txt
+    const moduleBgColorPalette = ['#b3e2cd', '#fdcdac', '#cbd5e8', '#f4cae4', '#e6f5c9', '#fff2ae', '#f1e2cc', '#cccccc'];
+
+    // Returns the color index in the `moduleBgColorPalette` for an element.
+    const getColorIndex = function (element) {
+        let scratchPad = getScratchPad(element);
+        let colorIndex = scratchPad["module-bg-color-index"];
+        if (colorIndex === undefined) {
+            // Get the color index of the parent (if any).
+            let parentId = element.data("parentModuleID");
+            if (parentId) {
+                let parent = element.cy().getElementById(parentId);
+                let parentColorIndex = getColorIndex(parent);
+                colorIndex = (parentColorIndex + 1) % moduleBgColorPalette.length;
+            } else {
+                colorIndex = 0;
+            }
+
+            scratchPad["module-bg-color-index"] = colorIndex;
+        }
+
+        return colorIndex
+    }
+
+    // Layout options.
+    const layoutOptions = {
+        name: 'fcose',
+        // 'draft', 'default' or 'proof'
+        // - "draft" only applies spectral layout
+        // - "default" improves the quality with incremental layout (fast cooling rate)
+        // - "proof" improves the quality with incremental layout (slow cooling rate)
+        quality: "proof",
+        // Use random node positions at beginning of layout
+        // if this is set to false, then quality option must be "proof"
+        randomize: false,
+        // Whether or not to animate the layout
+        animate: "end",
+        // Duration of animation in ms, if enabled
+        animationDuration: 500,
+        // Easing of animation, if enabled
+        animationEasing: undefined,
+        // Fit the viewport to the repositioned nodes
+        fit: true,
+        // Padding around layout
+        padding: 45,
+        // Whether to include labels in node dimensions. Valid in "proof" quality
+        nodeDimensionsIncludeLabels: true,
+        // Whether or not simple nodes (non-compound nodes) are of uniform dimensions
+        uniformNodeDimensions: false,
+        // Whether to pack disconnected components - valid only if randomize: true
+        packComponents: true,
+
+        /* spectral layout options */
+
+        // False for random, true for greedy sampling
+        samplingType: true,
+        // Sample size to construct distance matrix
+        sampleSize: 25,
+        // Separation amount between nodes
+        nodeSeparation: 75,
+        // Power iteration tolerance
+        piTol: 0.0000001,
+
+        /* incremental layout options */
+
+        // Node repulsion (non overlapping) multiplier
+        nodeRepulsion: 4500,
+        // Ideal edge (non nested) length
+        idealEdgeLength: 50,
+        // Divisor to compute edge forces
+        edgeElasticity: 0.45,
+        // Nesting factor (multiplier) to compute ideal edge length for nested edges
+        nestingFactor: 0.1,
+        // Maximum number of iterations to perform
+        numIter: 2500,
+        // For enabling tiling
+        tile: true,
+        // Represents the amount of the vertical space to put between the zero degree members during the tiling operation(can also be a function)
+        tilingPaddingVertical: 10,
+        // Represents the amount of the horizontal space to put between the zero degree members during the tiling operation(can also be a function)
+        tilingPaddingHorizontal: 10,
+        // Gravity force (constant)
+        gravity: 0.25,
+        // Gravity range (constant) for compounds
+        gravityRangeCompound: 1.5,
+        // Gravity force (constant) for compounds
+        gravityCompound: 1.0,
+        // Gravity range (constant)
+        gravityRange: 3.8,
+        // Initial cooling factor for incremental layout
+        initialEnergyOnIncremental: 0.3,
+    };
+
+    // Create the DOM element used to draw the graph.
+    let initialLayoutOptions = Object.assign({}, layoutOptions);
+    initialLayoutOptions["randomize"] = true;
+    const cy = cytoscape({
+        container: document.getElementById('cy'),
+        layout: initialLayoutOptions,
+        style: [
+            {
+                selector: 'node',
+                style: {
+                    'label': 'data(label)',
+                    'shape': 'rectangle',
+                    'width': 'label',
+                    'height': 'label',
+                    'padding': '10px',
+                    'text-valign': 'center',
+                    'text-halign': 'center',
+                    'background-color': '#EEEEEE',
+                    'border-style': 'solid',
+                    'border-width': 1,
+                    'border-color': '#000000',
+                }
+            },
+            {
+                selector: 'node.resource',
+                style: {
+                    'shape': 'round-rectangle',
+                },
+            },
+            {
+                selector: 'node.var',
+                style: {
+                    'shape': 'ellipse',
+                },
+            },
+            {
+                selector: 'node.local',
+                style: {
+                    'shape': 'ellipse',
+                },
+            },
+            {
+                selector: 'node.output',
+                style: {
+                    'shape': 'cut-rectangle',
+                },
+            },
+            {
+                selector: 'node.module',
+                style: {
+                    'font-weight': 'bold',
+                    'text-valign': 'top',
+                    'text-halign': 'center',
+                    'background-color': function (ele) {
+                        let colorIndex = getColorIndex(ele);
+                        return moduleBgColorPalette[colorIndex];
+                    }
+                }
+            },
+            {
+                selector: 'node.provider',
+                style: {
+                    'shape': 'diamond',
+                    'padding': '25px',
+                },
+            },
+            {
+                selector: "node.cy-expand-collapse-collapsed-node",
+                style: {
+                    'border-style': 'dashed'
+                }
+            },
+            {
+                selector: ':selected',
+                style: {
+                    "border-width": 2
+                }
+            },
+            {
+                selector: 'edge',
+                style: {
+                    'line-style': 'solid',
+                    'width': 1,
+                    'line-color': '#000000',
+                    'source-arrow-color': '#000000',
+                    'target-arrow-color': '#000000',
+                    'target-arrow-shape': 'triangle',
+                    'curve-style': 'bezier',
+                }
+            },
+            {
+                selector: 'edge[targetType = "var"], edge[targetType = "local"]',
+                style: {
+                    'line-style': 'dotted',
+                }
+            },
+            {
+                selector: 'edge[targetType = "output"]',
+                style: {
+                    'line-style': 'dashed',
+                }
+            },
+            {
+                selector: 'edge[sourceType = "module"][targetType = "module"]',
+                style: {
+                    'width': 2,
+                    'source-arrow-shape': 'diamond',
+                    'curve-style': 'straight',
+                }
+            },
+            {
+                selector: 'edge.cy-expand-collapse-meta-edge',
+                style: {
+                    'visibility': 'hidden'
+                }
+            },
+        ],
+        elements: {"nodes":[{"data":{"id":"module.root","label":"module.root","type":"module"},"classes":["module"]},{"data":{"id":"module.root.aws_lb.this","parent":"module.root","label":"aws_lb.this","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_route53_zone.private","parent":"module.root","label":"aws_route53_zone.private","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_subnet.private_a","parent":"module.root","label":"aws_subnet.private_a","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_vpc.this","parent":"module.root","label":"aws_vpc.this","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.output.aws_lb_listener","parent":"module.root","label":"output.aws_lb_listener","type":"output"},"classes":["output"]},{"data":{"id":"module.root.output.aws_subnet","parent":"module.root","label":"output.aws_subnet","type":"output"},"classes":["output"]},{"data":{"id":"module.root.local.subdomain","parent":"module.root","label":"local.subdomain","type":"local"},"classes":["local"]},{"data":{"id":"module.root.aws_eip.b","parent":"module.root","label":"aws_eip.b","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_subnet.private_b","parent":"module.root","label":"aws_subnet.private_b","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_subnet.public_a","parent":"module.root","label":"aws_subnet.public_a","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_subnet.restricted_a","parent":"module.root","label":"aws_subnet.restricted_a","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_vpc_dhcp_options_association.this","parent":"module.root","label":"aws_vpc_dhcp_options_association.this","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.data.aws_region.current","parent":"module.root","label":"data.aws_region.current","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_nat_gateway.a","parent":"module.root","label":"aws_nat_gateway.a","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_route.nat_a_route","parent":"module.root","label":"aws_route.nat_a_route","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_route_table.direct","parent":"module.root","label":"aws_route_table.direct","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_route_table.nat_b","parent":"module.root","label":"aws_route_table.nat_b","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_route_table_association.public_a_route_table_association","parent":"module.root","label":"aws_route_table_association.public_a_route_table_association","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_route_table_association.restricted_a_route_table_association","parent":"module.root","label":"aws_route_table_association.restricted_a_route_table_association","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_route_table_association.restricted_b_route_table_association","parent":"module.root","label":"aws_route_table_association.restricted_b_route_table_association","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.output.aws_lb","parent":"module.root","label":"output.aws_lb","type":"output"},"classes":["output"]},{"data":{"id":"module.root.output.aws_vpc","parent":"module.root","label":"output.aws_vpc","type":"output"},"classes":["output"]},{"data":{"id":"module.root.var.allowed_waf_cidrs","parent":"module.root","label":"var.allowed_waf_cidrs","type":"var"},"classes":["var"]},{"data":{"id":"module.root.var.domain","parent":"module.root","label":"var.domain","type":"var"},"classes":["var"]},{"data":{"id":"module.root.local.cidr_block","parent":"module.root","label":"local.cidr_block","type":"local"},"classes":["local"]},{"data":{"id":"module.root.aws_lb_listener.this","parent":"module.root","label":"aws_lb_listener.this","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_route53_zone.public","parent":"module.root","label":"aws_route53_zone.public","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.var.prefix","parent":"module.root","label":"var.prefix","type":"var"},"classes":["var"]},{"data":{"id":"module.root.local.common_tags","parent":"module.root","label":"local.common_tags","type":"local"},"classes":["local"]},{"data":{"id":"module.root.aws_subnet.restricted_b","parent":"module.root","label":"aws_subnet.restricted_b","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_wafv2_web_acl.this","parent":"module.root","label":"aws_wafv2_web_acl.this","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.var.allowed_waf_country_codes","parent":"module.root","label":"var.allowed_waf_country_codes","type":"var"},"classes":["var"]},{"data":{"id":"module.root.aws_nat_gateway.b","parent":"module.root","label":"aws_nat_gateway.b","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_route.internet_gateway_route","parent":"module.root","label":"aws_route.internet_gateway_route","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_route_table_association.private_a_route_table_association","parent":"module.root","label":"aws_route_table_association.private_a_route_table_association","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_wafv2_web_acl_association.this","parent":"module.root","label":"aws_wafv2_web_acl_association.this","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_route.nat_b_route","parent":"module.root","label":"aws_route.nat_b_route","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_route_table.nat_a","parent":"module.root","label":"aws_route_table.nat_a","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_vpc_dhcp_options.this","parent":"module.root","label":"aws_vpc_dhcp_options.this","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.var.cidr_block","parent":"module.root","label":"var.cidr_block","type":"var"},"classes":["var"]},{"data":{"id":"module.root.var.common_tags","parent":"module.root","label":"var.common_tags","type":"var"},"classes":["var"]},{"data":{"id":"module.root.output.aws_route53_zone","parent":"module.root","label":"output.aws_route53_zone","type":"output"},"classes":["output"]},{"data":{"id":"module.root.aws_eip.a","parent":"module.root","label":"aws_eip.a","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_internet_gateway.this","parent":"module.root","label":"aws_internet_gateway.this","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_route_table_association.private_b_route_table_association","parent":"module.root","label":"aws_route_table_association.private_b_route_table_association","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_route_table_association.public_b_route_table_association","parent":"module.root","label":"aws_route_table_association.public_b_route_table_association","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_security_group.this","parent":"module.root","label":"aws_security_group.this","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_subnet.public_b","parent":"module.root","label":"aws_subnet.public_b","type":"resource"},"classes":["resource"]},{"data":{"id":"module.root.aws_wafv2_ip_set.this","parent":"module.root","label":"aws_wafv2_ip_set.this","type":"resource"},"classes":["resource"]}],"edges":[{"data":{"id":"module.root.aws_eip.a-module.root.local.common_tags","source":"module.root.aws_eip.a","target":"module.root.local.common_tags","sourceType":"resource","targetType":"local"},"classes":["resource-local"]},{"data":{"id":"module.root.aws_eip.a-module.root.var.prefix","source":"module.root.aws_eip.a","target":"module.root.var.prefix","sourceType":"resource","targetType":"var"},"classes":["resource-var"]},{"data":{"id":"module.root.aws_eip.b-module.root.local.common_tags","source":"module.root.aws_eip.b","target":"module.root.local.common_tags","sourceType":"resource","targetType":"local"},"classes":["resource-local"]},{"data":{"id":"module.root.aws_eip.b-module.root.var.prefix","source":"module.root.aws_eip.b","target":"module.root.var.prefix","sourceType":"resource","targetType":"var"},"classes":["resource-var"]},{"data":{"id":"module.root.aws_internet_gateway.this-module.root.aws_vpc.this","source":"module.root.aws_internet_gateway.this","target":"module.root.aws_vpc.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_lb.this-module.root.aws_security_group.this","source":"module.root.aws_lb.this","target":"module.root.aws_security_group.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_lb.this-module.root.aws_subnet.public_a","source":"module.root.aws_lb.this","target":"module.root.aws_subnet.public_a","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_lb.this-module.root.aws_subnet.public_b","source":"module.root.aws_lb.this","target":"module.root.aws_subnet.public_b","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_lb_listener.this-module.root.aws_lb.this","source":"module.root.aws_lb_listener.this","target":"module.root.aws_lb.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_nat_gateway.a-module.root.aws_eip.a","source":"module.root.aws_nat_gateway.a","target":"module.root.aws_eip.a","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_nat_gateway.a-module.root.aws_subnet.public_a","source":"module.root.aws_nat_gateway.a","target":"module.root.aws_subnet.public_a","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_nat_gateway.b-module.root.aws_eip.b","source":"module.root.aws_nat_gateway.b","target":"module.root.aws_eip.b","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_nat_gateway.b-module.root.aws_subnet.public_b","source":"module.root.aws_nat_gateway.b","target":"module.root.aws_subnet.public_b","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route.internet_gateway_route-module.root.aws_internet_gateway.this","source":"module.root.aws_route.internet_gateway_route","target":"module.root.aws_internet_gateway.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route.internet_gateway_route-module.root.aws_route_table.direct","source":"module.root.aws_route.internet_gateway_route","target":"module.root.aws_route_table.direct","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route.nat_a_route-module.root.aws_nat_gateway.a","source":"module.root.aws_route.nat_a_route","target":"module.root.aws_nat_gateway.a","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route.nat_a_route-module.root.aws_route_table.nat_a","source":"module.root.aws_route.nat_a_route","target":"module.root.aws_route_table.nat_a","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route.nat_b_route-module.root.aws_nat_gateway.b","source":"module.root.aws_route.nat_b_route","target":"module.root.aws_nat_gateway.b","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route.nat_b_route-module.root.aws_route_table.nat_b","source":"module.root.aws_route.nat_b_route","target":"module.root.aws_route_table.nat_b","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route53_zone.private-module.root.aws_vpc.this","source":"module.root.aws_route53_zone.private","target":"module.root.aws_vpc.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route53_zone.private-module.root.local.subdomain","source":"module.root.aws_route53_zone.private","target":"module.root.local.subdomain","sourceType":"resource","targetType":"local"},"classes":["resource-local"]},{"data":{"id":"module.root.aws_route53_zone.public-module.root.local.common_tags","source":"module.root.aws_route53_zone.public","target":"module.root.local.common_tags","sourceType":"resource","targetType":"local"},"classes":["resource-local"]},{"data":{"id":"module.root.aws_route53_zone.public-module.root.local.subdomain","source":"module.root.aws_route53_zone.public","target":"module.root.local.subdomain","sourceType":"resource","targetType":"local"},"classes":["resource-local"]},{"data":{"id":"module.root.aws_route_table.direct-module.root.aws_vpc.this","source":"module.root.aws_route_table.direct","target":"module.root.aws_vpc.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route_table.nat_a-module.root.aws_vpc.this","source":"module.root.aws_route_table.nat_a","target":"module.root.aws_vpc.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route_table.nat_b-module.root.aws_vpc.this","source":"module.root.aws_route_table.nat_b","target":"module.root.aws_vpc.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route_table_association.private_a_route_table_association-module.root.aws_route_table.nat_a","source":"module.root.aws_route_table_association.private_a_route_table_association","target":"module.root.aws_route_table.nat_a","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route_table_association.private_a_route_table_association-module.root.aws_subnet.private_a","source":"module.root.aws_route_table_association.private_a_route_table_association","target":"module.root.aws_subnet.private_a","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route_table_association.private_b_route_table_association-module.root.aws_route_table.nat_b","source":"module.root.aws_route_table_association.private_b_route_table_association","target":"module.root.aws_route_table.nat_b","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route_table_association.private_b_route_table_association-module.root.aws_subnet.private_b","source":"module.root.aws_route_table_association.private_b_route_table_association","target":"module.root.aws_subnet.private_b","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route_table_association.public_a_route_table_association-module.root.aws_route_table.direct","source":"module.root.aws_route_table_association.public_a_route_table_association","target":"module.root.aws_route_table.direct","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route_table_association.public_a_route_table_association-module.root.aws_subnet.public_a","source":"module.root.aws_route_table_association.public_a_route_table_association","target":"module.root.aws_subnet.public_a","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route_table_association.public_b_route_table_association-module.root.aws_route_table.direct","source":"module.root.aws_route_table_association.public_b_route_table_association","target":"module.root.aws_route_table.direct","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route_table_association.public_b_route_table_association-module.root.aws_subnet.public_b","source":"module.root.aws_route_table_association.public_b_route_table_association","target":"module.root.aws_subnet.public_b","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route_table_association.restricted_a_route_table_association-module.root.aws_route_table.nat_a","source":"module.root.aws_route_table_association.restricted_a_route_table_association","target":"module.root.aws_route_table.nat_a","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route_table_association.restricted_a_route_table_association-module.root.aws_subnet.restricted_a","source":"module.root.aws_route_table_association.restricted_a_route_table_association","target":"module.root.aws_subnet.restricted_a","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route_table_association.restricted_b_route_table_association-module.root.aws_route_table.nat_b","source":"module.root.aws_route_table_association.restricted_b_route_table_association","target":"module.root.aws_route_table.nat_b","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_route_table_association.restricted_b_route_table_association-module.root.aws_subnet.restricted_b","source":"module.root.aws_route_table_association.restricted_b_route_table_association","target":"module.root.aws_subnet.restricted_b","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_security_group.this-module.root.aws_vpc.this","source":"module.root.aws_security_group.this","target":"module.root.aws_vpc.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_subnet.private_a-module.root.aws_vpc.this","source":"module.root.aws_subnet.private_a","target":"module.root.aws_vpc.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_subnet.private_a-module.root.data.aws_region.current","source":"module.root.aws_subnet.private_a","target":"module.root.data.aws_region.current","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_subnet.private_b-module.root.aws_vpc.this","source":"module.root.aws_subnet.private_b","target":"module.root.aws_vpc.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_subnet.private_b-module.root.data.aws_region.current","source":"module.root.aws_subnet.private_b","target":"module.root.data.aws_region.current","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_subnet.public_a-module.root.aws_vpc.this","source":"module.root.aws_subnet.public_a","target":"module.root.aws_vpc.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_subnet.public_a-module.root.data.aws_region.current","source":"module.root.aws_subnet.public_a","target":"module.root.data.aws_region.current","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_subnet.public_b-module.root.aws_vpc.this","source":"module.root.aws_subnet.public_b","target":"module.root.aws_vpc.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_subnet.public_b-module.root.data.aws_region.current","source":"module.root.aws_subnet.public_b","target":"module.root.data.aws_region.current","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_subnet.restricted_a-module.root.aws_vpc.this","source":"module.root.aws_subnet.restricted_a","target":"module.root.aws_vpc.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_subnet.restricted_a-module.root.data.aws_region.current","source":"module.root.aws_subnet.restricted_a","target":"module.root.data.aws_region.current","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_subnet.restricted_b-module.root.aws_vpc.this","source":"module.root.aws_subnet.restricted_b","target":"module.root.aws_vpc.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_subnet.restricted_b-module.root.data.aws_region.current","source":"module.root.aws_subnet.restricted_b","target":"module.root.data.aws_region.current","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_vpc.this-module.root.local.cidr_block","source":"module.root.aws_vpc.this","target":"module.root.local.cidr_block","sourceType":"resource","targetType":"local"},"classes":["resource-local"]},{"data":{"id":"module.root.aws_vpc.this-module.root.local.common_tags","source":"module.root.aws_vpc.this","target":"module.root.local.common_tags","sourceType":"resource","targetType":"local"},"classes":["resource-local"]},{"data":{"id":"module.root.aws_vpc.this-module.root.var.prefix","source":"module.root.aws_vpc.this","target":"module.root.var.prefix","sourceType":"resource","targetType":"var"},"classes":["resource-var"]},{"data":{"id":"module.root.aws_vpc_dhcp_options.this-module.root.local.common_tags","source":"module.root.aws_vpc_dhcp_options.this","target":"module.root.local.common_tags","sourceType":"resource","targetType":"local"},"classes":["resource-local"]},{"data":{"id":"module.root.aws_vpc_dhcp_options.this-module.root.var.prefix","source":"module.root.aws_vpc_dhcp_options.this","target":"module.root.var.prefix","sourceType":"resource","targetType":"var"},"classes":["resource-var"]},{"data":{"id":"module.root.aws_vpc_dhcp_options_association.this-module.root.aws_vpc.this","source":"module.root.aws_vpc_dhcp_options_association.this","target":"module.root.aws_vpc.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_vpc_dhcp_options_association.this-module.root.aws_vpc_dhcp_options.this","source":"module.root.aws_vpc_dhcp_options_association.this","target":"module.root.aws_vpc_dhcp_options.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_wafv2_ip_set.this-module.root.local.common_tags","source":"module.root.aws_wafv2_ip_set.this","target":"module.root.local.common_tags","sourceType":"resource","targetType":"local"},"classes":["resource-local"]},{"data":{"id":"module.root.aws_wafv2_ip_set.this-module.root.var.allowed_waf_cidrs","source":"module.root.aws_wafv2_ip_set.this","target":"module.root.var.allowed_waf_cidrs","sourceType":"resource","targetType":"var"},"classes":["resource-var"]},{"data":{"id":"module.root.aws_wafv2_ip_set.this-module.root.var.prefix","source":"module.root.aws_wafv2_ip_set.this","target":"module.root.var.prefix","sourceType":"resource","targetType":"var"},"classes":["resource-var"]},{"data":{"id":"module.root.aws_wafv2_web_acl.this-module.root.aws_wafv2_ip_set.this","source":"module.root.aws_wafv2_web_acl.this","target":"module.root.aws_wafv2_ip_set.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_wafv2_web_acl.this-module.root.var.allowed_waf_country_codes","source":"module.root.aws_wafv2_web_acl.this","target":"module.root.var.allowed_waf_country_codes","sourceType":"resource","targetType":"var"},"classes":["resource-var"]},{"data":{"id":"module.root.aws_wafv2_web_acl_association.this-module.root.aws_lb.this","source":"module.root.aws_wafv2_web_acl_association.this","target":"module.root.aws_lb.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.aws_wafv2_web_acl_association.this-module.root.aws_wafv2_web_acl.this","source":"module.root.aws_wafv2_web_acl_association.this","target":"module.root.aws_wafv2_web_acl.this","sourceType":"resource","targetType":"resource"},"classes":["resource-resource"]},{"data":{"id":"module.root.local.cidr_block-module.root.var.cidr_block","source":"module.root.local.cidr_block","target":"module.root.var.cidr_block","sourceType":"local","targetType":"var"},"classes":["local-var"]},{"data":{"id":"module.root.local.common_tags-module.root.var.common_tags","source":"module.root.local.common_tags","target":"module.root.var.common_tags","sourceType":"local","targetType":"var"},"classes":["local-var"]},{"data":{"id":"module.root.local.subdomain-module.root.var.domain","source":"module.root.local.subdomain","target":"module.root.var.domain","sourceType":"local","targetType":"var"},"classes":["local-var"]},{"data":{"id":"module.root.local.subdomain-module.root.var.prefix","source":"module.root.local.subdomain","target":"module.root.var.prefix","sourceType":"local","targetType":"var"},"classes":["local-var"]},{"data":{"id":"module.root.output.aws_lb-module.root.aws_lb.this","source":"module.root.output.aws_lb","target":"module.root.aws_lb.this","sourceType":"output","targetType":"resource"},"classes":["output-resource"]},{"data":{"id":"module.root.output.aws_lb_listener-module.root.aws_lb_listener.this","source":"module.root.output.aws_lb_listener","target":"module.root.aws_lb_listener.this","sourceType":"output","targetType":"resource"},"classes":["output-resource"]},{"data":{"id":"module.root.output.aws_route53_zone-module.root.aws_route53_zone.private","source":"module.root.output.aws_route53_zone","target":"module.root.aws_route53_zone.private","sourceType":"output","targetType":"resource"},"classes":["output-resource"]},{"data":{"id":"module.root.output.aws_route53_zone-module.root.aws_route53_zone.public","source":"module.root.output.aws_route53_zone","target":"module.root.aws_route53_zone.public","sourceType":"output","targetType":"resource"},"classes":["output-resource"]},{"data":{"id":"module.root.output.aws_subnet-module.root.aws_subnet.private_a","source":"module.root.output.aws_subnet","target":"module.root.aws_subnet.private_a","sourceType":"output","targetType":"resource"},"classes":["output-resource"]},{"data":{"id":"module.root.output.aws_subnet-module.root.aws_subnet.private_b","source":"module.root.output.aws_subnet","target":"module.root.aws_subnet.private_b","sourceType":"output","targetType":"resource"},"classes":["output-resource"]},{"data":{"id":"module.root.output.aws_subnet-module.root.aws_subnet.public_a","source":"module.root.output.aws_subnet","target":"module.root.aws_subnet.public_a","sourceType":"output","targetType":"resource"},"classes":["output-resource"]},{"data":{"id":"module.root.output.aws_subnet-module.root.aws_subnet.public_b","source":"module.root.output.aws_subnet","target":"module.root.aws_subnet.public_b","sourceType":"output","targetType":"resource"},"classes":["output-resource"]},{"data":{"id":"module.root.output.aws_subnet-module.root.aws_subnet.restricted_a","source":"module.root.output.aws_subnet","target":"module.root.aws_subnet.restricted_a","sourceType":"output","targetType":"resource"},"classes":["output-resource"]},{"data":{"id":"module.root.output.aws_subnet-module.root.aws_subnet.restricted_b","source":"module.root.output.aws_subnet","target":"module.root.aws_subnet.restricted_b","sourceType":"output","targetType":"resource"},"classes":["output-resource"]},{"data":{"id":"module.root.output.aws_vpc-module.root.aws_vpc.this","source":"module.root.output.aws_vpc","target":"module.root.aws_vpc.this","sourceType":"output","targetType":"resource"},"classes":["output-resource"]}]}
+
+    });
+
+    const expandCollapseApi = cy.expandCollapse({
+        layoutBy: layoutOptions,
+        fisheye: true,
+        animate: false,
+        undoable: false
+    });
+
+    document.getElementById("collapseAll").addEventListener("click", function () {
+        expandCollapseApi.collapseAll();
+    });
+
+    document.getElementById("expandAll").addEventListener("click", function () {
+        expandCollapseApi.expandAll();
+    });
+
+    document.getElementById("runLayout").addEventListener("click", function () {
+        const layout = cy.layout(layoutOptions);
+        layout.run();
+    });
+</script>
+</body>
+</html>

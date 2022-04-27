@@ -1,0 +1,19 @@
+{
+    "Version": "2.4.0",
+    "Verbose": false,
+    "Debug": false,
+    "IgnoreDefaults": false,
+    "SpacesAftertabs": false,
+    "NoColor": false,
+    "Exclude": [
+        ".terraform",
+        "README.md",
+        "docs/diagram.drawio.xml",
+        "docs/graph.json"
+    ],
+    "AllowedContentTypes": [],
+    "PassedFiles": [],
+    "Disable": {
+        "MaxLineLength": true
+    }
+}

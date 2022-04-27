@@ -19,20 +19,12 @@ insert_final_newline = true
 max_line_length = 0
 trim_trailing_whitespace = false
 
+# Terraform
+[*.{tf,tfvars,hcl}]
+indent_size = 2
+
 # YAML files
 [*.{yml,yaml}]
-indent_size = 2
-
-# SH
-[*.sh]
-indent_size = 2
-
-# Terraform
-[*.{tf,tfvars,conf,hcl}]
-indent_size = 2
-
-# JS
-[*.{js,json}]
 indent_size = 2
 
 # Makefile
@@ -40,17 +32,13 @@ indent_size = 2
 tab_width = 2
 indent_style = tab
 
-# Dockerfile
-[Dockerfile]
-indent_size = 4
-
 # Cucumber
 [*.feature]
 tab_width = 4
 
 # OPA
 [*.rego]
-tab_width = 2
+tab_width = 4
 
 # Commit
 [COMMIT_EDITMSG]

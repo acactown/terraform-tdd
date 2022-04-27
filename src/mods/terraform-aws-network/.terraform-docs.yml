@@ -1,0 +1,50 @@
+---
+version: "0.16.0"
+
+formatter: "markdown table"
+
+header-from: "./docs/header.md"
+
+footer-from: "./docs/footer.md"
+
+recursive:
+  enabled: false
+
+sections:
+  show:
+    - "all"
+
+content: |
+  {{ .Header }}
+
+  {{ .Requirements }}
+  <p align="right">(<a href="#top">back to top</a>)</p>
+  {{ .Providers }}
+  <p align="right">(<a href="#top">back to top</a>)</p>
+  {{ .Modules }}
+  <p align="right">(<a href="#top">back to top</a>)</p>
+  {{ .Resources }}
+  <p align="right">(<a href="#top">back to top</a>)</p>
+  {{ .Inputs }}
+  <p align="right">(<a href="#top">back to top</a>)</p>
+  {{ .Outputs }}
+  <p align="right">(<a href="#top">back to top</a>)</p>
+  {{ .Footer }}
+
+sort:
+  enabled: true
+  by: "required"
+
+settings:
+  anchor: true
+  default: true
+  escape: false
+  hide-empty: false
+  html: true
+  indent: 4
+  required: false
+  type: true
+
+output:
+  file: "README.md"
+  mode: "replace"

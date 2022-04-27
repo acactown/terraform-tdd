@@ -148,7 +148,6 @@ The following diagrams show how the Test Pyramid works on a regular SDLC.
 * ✅ `terraform fmt`
 * ✅ `terraform-docs`
 * ✅ `editorconfig-checker`
-* ⚙️ `commit-lint`
 * ⚙️ `terraform-graph-beautifier`
 * ⚙️ `terraform-visual`
 
@@ -163,24 +162,28 @@ The following diagrams show how the Test Pyramid works on a regular SDLC.
 3. __Linters:__ Statically validate your code to catch common errors. Linters provide crucial information to speed up debugging and save time in your development. Warn about depreciated syntax and unused declarations, enforce best practices and naming conventions. Some tools:
 
 * ✅ `tflint`
+* ✅ `tfsec`
+* ✅ `terrascan`
 * ✅ `conftest`
 * ☑️ `sentinel`
-* ⚙️ `super-linter`
 * ⚙️ `tfupdate`
-* ⚙️ `dependabot`
+* ⚙️ `commit-lint`
+* ⚙️ `secretlint`
+* ⚙️ `misspell`
+* ⚙️ `super-linter`
+* ⚙️ `megalinter`
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 4. __Dry run:__ Partially execute the code and validate the `plan`, but don't actually deploy. It looks for misconfiguration that may lead to security or compliance problems. Changes made by Terraform may alter the status of resources hosted by a cloud provider. Some tools:
 
 * ✅ `checkov`
-* ✅ `tfsec`
 * ✅ `terraform-compliance`
 * ✅ `conftest`
 * ☑️ `sentinel`
-* ⚙️ `terrascan`
 * ⚙️ `infracost`
 * ⚙️ `regula`
+* ⚙️ `kics`
 
 __*BONUS__ ✅ `pre-commit-terraform`: Setup pre-commit git hooks to take care of Terraform configurations (auto-format, validate, update docs).
 
@@ -222,9 +225,9 @@ Some tools:
 1. Analyze the code and find the most important things to test. Focus on: _Check Interactions Between 2 Modules_, _Input & Outputs_, _Compare the expected STATE_, **NO** _Execution_, **NO** _dependencies_.
 2. Write a test for each of those things.
 3. Run the `terraform plan` to reflect the desired state.
-3. Run the test on the `terraforn plan output` and see if it passes.
-4. Repeat steps 2 and 3 until the code is stable.
-5. Refactor the code to make it easier to test.
+4. Run the test on the `terraforn plan output` and see if it passes.
+5. Repeat steps 2 and 3 until the code is stable.
+6. Refactor the code to make it easier to test.
 
 Some tools:
 
@@ -267,19 +270,21 @@ __*BONUS__ ⚙️ `aws-nuke`: Use a sandbox or playground account and remove all
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
+### Pipeline
+
+![pipeline](./docs/pipeline.png)
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
 ## Prerequisites
 
 You will need the following things properly installed on your computer.
 
 * [Git](http://git-scm.com/)
-
 * [Terraform](https://www.terraform.io/downloads.html)
-
 * [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html)  
 * [AWS Vault](https://github.com/99designs/aws-vault)
-
 * [Docker](https://www.docker.com/)
-
 * [Golang](https://golang.org/)
 
 <p align="right">(<a href="#top">back to top</a>)</p>

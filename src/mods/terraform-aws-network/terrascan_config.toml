@@ -1,0 +1,8 @@
+[severity]
+level = "medium"
+
+[rules]
+    skip-rules = [
+        "AWS.kubernetes.IAM.107"
+    ]
+
